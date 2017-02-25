@@ -47,5 +47,5 @@ struct Screen {
 /*
  * ACCELEROMETER RELATED
  */
-#define ACCEL_NSAMPLES 8  //
+#define ACCEL_NSAMPLES 16  //
 #define ACCEL_RATE 100    // Hz

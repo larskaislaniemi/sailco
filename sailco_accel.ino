@@ -73,6 +73,7 @@ void accel_init() {
 
   /* full res, right justified, +- 16g */ 
   C_WTB(ADDR_ACCE); Wire.write(0x31); Wire.write(8+3); C_WTE();
+  ares = 256; // LSB/g
   
   /* set to measure mode */
   C_WTB(ADDR_ACCE); Wire.write(0x2D); Wire.write(8); C_WTE();
@@ -81,7 +82,7 @@ void accel_init() {
 void accel_getData(int16_t *x, int16_t *y, int16_t *z) {
   /* wait until accelerometer has gathered ACCEL_NSAMPLES samples
    *  with the current measurement rate */
-  while (millis() < accel_lastRead + ACCEL_NSAMPLES*1000/ACCEL_RATE) {};
+  while (millis() < accel_lastRead + ACCEL_NSAMPLES*1000/ACCEL_RATE) {  };
   accel_lastRead = millis();
   
   uint8_t acceldata[6], bytecount;

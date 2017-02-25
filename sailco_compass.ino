@@ -1,43 +1,87 @@
 /*
    COMPASS STUFF
+
+   00 cfg reg a
+   01 cfg reg b
+   02 mode reg
+   03..08 xzy data reg
+   09 status reg
+   10..12 id reg a..c
+
+   
+   cfg reg a: 7    unused
+              65   num of samples averaged (00 1, 01 2, 10 4, 11 8)
+              432  data output rate (Hz 000 0.75, 001 1.5, 010 3, 011 7.5, 100 [15], 101 30, 110 75, 111 xx)
+              10   meas cfg bit (normal, pos bias, neg bias, xx)
+
+              use: 01010000b = 16+64 (4 samples, 15 Hz)
+
+   cfg reg b: 765  gain cfg bits. output range is always -2048..2047; -4096 == overflow
+
+                   000 +- 0.88 Ga, 0.73 mG/LSB
+                   001 +- 1.3 Ga,  0.92 mG/LSB (default)
+                   ...
+                   111 +- 8.1 Ga,  4.35 mg/LSB
+                   
+              43210 all zeros
+
+              use: 00100000b = 32 = 0x20, 0.92 mg/LSB = 1090 LSB/Ga
+
+   mode reg: default val 0x01
+             765432 set pin = high speed I2C
+             10     operating mode: 00 continuous measurement
+                                    01 single meas
+                                    10 idle mode
+                                    11 idle mode
+                                    
+   status reg: 765432 all zeros
+               1      lock
+               0      rdy (data available)
+   
 */
 
-int16_t comp_readAxis(uint8_t axis) {
-  // X 0, Z 1, Y 2
-  uint8_t reg;
-  uint8_t val1, val2;
-  int16_t retval;
+void comp_readAxes(int16_t *x, int16_t *y, int16_t *z) {
+  uint8_t inData[6], n;
 
-  reg = 3 + axis * 2;
-  val1 = (int16_t)_comp_read(reg);
-  val2 = (int16_t)_comp_read(reg + 1);
+  if (!_comp_waitReady(false)) {
+    //*x = *y = *z = 0;
+    return;
+  }
+  
+  C_WTB(ADDR_COMP); Wire.write(0x03); C_WTE(); 
 
-  retval = (int16_t)((uint16_t)(val1 << 8) | (uint16_t)val2);
+  n = Wire.requestFrom(ADDR_COMP, 6, true);
+  if (n != 6) {
+    //*x = *y = *z = 0;
+    return;
+  }
 
-  return retval;
+  for (uint8_t i = 0; i < 6; i++) {
+    inData[i] = Wire.read();
+  }
+
+  *x = (int16_t)((uint16_t)(inData[0] << 8) | (uint16_t)inData[1]);
+  *z = (int16_t)((uint16_t)(inData[2] << 8) | (uint16_t)inData[3]);
+  *y = (int16_t)((uint16_t)(inData[4] << 8) | (uint16_t)inData[5]);
 }
 
-uint8_t _comp_read(uint8_t reg) {
-  C_WTB(ADDR_COMP); Wire.write(reg); C_WTE();
-  Wire.requestFrom(ADDR_COMP, 1, true);
-  while (!Wire.available()) { };
-  return Wire.read();
-}
-
-void _comp_waitReady() {
+bool _comp_waitReady(bool block) {
   bool compassReady = false;
   uint8_t val;
 
   while (!compassReady) {
-    val = _comp_read(9);
+    C_WTB(ADDR_COMP); Wire.write(9); C_WTE();
+    Wire.requestFrom(ADDR_COMP, 1, true);
+    while (!Wire.available()) { };
+    val = Wire.read();
     if (val && (uint8_t)1) compassReady = true;
   }
 }
 
 void comp_init() {
-  // 00 cfg reg A: 01110000b = 16d + 32d + 64d = 70h
-  // 01 cfg reg B: 00100000b = 32d = 20h
-  // 02 mode reg:  00000001b = 1d          // these are: single meas mode, default params (see specs)
+  // 00 cfg reg A: 01010000b = 16d + 64d = 0x50 // 4 samples, 15 Hz
+  // 01 cfg reg B: 00100000b = 32d = 20h        // 0.92 mg/LSB
+  // 02 mode reg:  00000000b = 0d               // continuous meas mode
 
   // 03, 04 data X, A&B (A MSB, B LSB) // two's complement form
   // 05, 06 data Z, A&B (A MSB, B LSB) // two's complement form
@@ -51,9 +95,11 @@ void comp_init() {
   //            0x3D (reading)
   // I2C format: send data address
 
-  C_WTB(ADDR_COMP); Wire.write(0x00); Wire.write(0x70); C_WTE();
+  cres = 1090;   // LSB/Ga
+  
+  C_WTB(ADDR_COMP); Wire.write(0x00); Wire.write(0x50); C_WTE();
   C_WTB(ADDR_COMP); Wire.write(0x01); Wire.write(0x20); C_WTE();
   C_WTB(ADDR_COMP); Wire.write(0x02); Wire.write(0x00); C_WTE();
 
-  _comp_waitReady();
+  _comp_waitReady(true);
 }
